@@ -32,7 +32,11 @@ struct misc
 void log_blob_hook(void* user_struct, struct blob* b)
 // center_x, center_y and size are the cumulative stats for a blob
 {
-    printf("%.2f,%.2f,%i\n", b->center_x, b->center_y, b->size);
+    struct misc* options = user_struct;
+    if (options->invert)
+        {printf("%.2f,%.2f,%i,white\n", b->center_x, b->center_y, b->size);}
+    else
+        {printf("%.2f,%.2f,%i,black\n", b->center_x, b->center_y, b->size);}
 }
 
 int init_pixel_stream_hook(void* user_struct, struct stream_state* stream)
@@ -84,29 +88,37 @@ int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 void use(void)
 {
     printf("csv-segment --  Find and count unconnected blobs in an image\n\n");
-    printf("Use: csv-segment white|black image.file\n");
-    printf("     white|black is the color of the foreground\n");
-    printf("     x_center, y_center, pixel_size printed to stdout\n\n");
+    printf("Use: csv-segment [white|black] image.file\n");
+    printf("    white|black - optional arg to double speed\n\n");
+    printf("x_center, y_center, pixel_size, color printed to stdout\n\n");
 }
 
 int main(int argc, char *argv[])
 {
     struct misc user_struct;
 
-    if (argc != 3)
-        {use(); return 2;}
+    if (argc != 2 && argc != 3)
+        {use(); return 1;}
 
-    user_struct.invert = -1;
-    if (strncmp(argv[1], "black", 5) == 0)
-        {user_struct.invert = 0;}
-    if (strncmp(argv[1], "white", 5) == 0)
-        {user_struct.invert = 1;}
-    if (user_struct.invert == -1)
-        {use(); return 2;}
+    if (strcmp(argv[1], "-h") == 0)
+        {use(); return 0;}
+    if (strcmp(argv[1], "--help") == 0)
+        {use(); return 0;}
 
-    user_struct.filename = argv[2];
+    user_struct.filename = argv[argc-1];
 
-    printf("X,Y,size\n");
-    return segment_image((void*)&user_struct);
+    printf("X,Y,size,color\n");
+
+    if (argc != 3 || strcmp(argv[1], "black") == 0)
+    {
+        user_struct.invert = 0;
+        segment_image((void*)&user_struct);
+    }
+
+    if (argc != 3 || strcmp(argv[1], "white") == 0)
+    {
+        user_struct.invert = 1;
+        segment_image((void*)&user_struct);
+    }
 }
 
