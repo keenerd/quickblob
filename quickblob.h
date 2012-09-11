@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// gcc -O2 -c quick_segment.c -o quick_segment.o
-// ar rvs quick_segment.a quick_segment.o
+// gcc -O2 -c quickblob.c -o quickblob.o
+// ar rvs quickblob.a quickblob.o
 
 // licensed LGPL
 
@@ -13,7 +13,7 @@ ABOUT
         stream_state keeps track of this
     blobs are assembled incrementally
     complete blobs are passed to log_blob_hook
-    see more details in quick_segment.c
+    see more details in quickblob.c
 */
 
 /* some structures you'll be working with */
@@ -22,7 +22,7 @@ struct blob
 // you'll probably only need size, center_x and center_y
 {
     int size;
-    // track current segment
+    // track current line segment
     int x1;
     int x2;
     int y;
@@ -73,5 +73,5 @@ int next_row_hook(void* user_struct, struct stream_state* stream);
 
 /* callable functions */
 
-int segment_image(void* user_struct);
+int extract_image(void* user_struct);
 

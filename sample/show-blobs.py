@@ -9,7 +9,7 @@ def bb(x, y, r):
     return x-r, y-r, x+r, y+r
 
 if len(sys.argv) != 4:
-    print "csv-segment lorem.png > data.csv"
+    print "csv-blobs lorem.png > data.csv"
     print "show-blobs.py data.csv lorem.png blobs.png"
     sys.exit(2)
 

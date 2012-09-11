@@ -2,25 +2,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "quick_segment.h"
+#include "quickblob.h"
 
 #include <IL/il.h>
 
-// gcc -O2 -lIL -o csv-segment csv-segment.c quick_segment.a
+// gcc -O2 -lIL -o csv-blobs csv-blobs.c quickblob.a
 
 // licensed LGPL
 
 /*
 ABOUT
-    example of how to use quick_segment with DevIL
+    example of how to use QuickBlob with DevIL
     you define a few functions for your choice of image library
-        take a look at quick_segment.h for more details
+        take a look at quickblob.h for more details
     DevIL starts at lower left corner, works up
         reported Y coords might be backwards from what you expect
 
 TODO
     find an O(1) [memory] image streaming library for this example
-    make quick_segment into dynamic library
+    make quickblob into dynamic library
 */
 
 struct misc
@@ -87,8 +87,8 @@ int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 
 void use(void)
 {
-    printf("csv-segment --  Find and count unconnected blobs in an image\n\n");
-    printf("Use: csv-segment [white|black] image.file\n");
+    printf("csv-blobs --  Find and count unconnected blobs in an image\n\n");
+    printf("Use: csv-blobs [white|black] image.file\n");
     printf("    white|black - optional arg to double speed\n\n");
     printf("x_center, y_center, pixel_size, color printed to stdout\n\n");
 }
@@ -112,13 +112,13 @@ int main(int argc, char *argv[])
     if (argc != 3 || strcmp(argv[1], "black") == 0)
     {
         user_struct.invert = 0;
-        segment_image((void*)&user_struct);
+        extract_image((void*)&user_struct);
     }
 
     if (argc != 3 || strcmp(argv[1], "white") == 0)
     {
         user_struct.invert = 1;
-        segment_image((void*)&user_struct);
+        extract_image((void*)&user_struct);
     }
 }
 

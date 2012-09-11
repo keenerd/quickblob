@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "quick_segment.h"
+#include "quickblob.h"
 
 // licensed LGPL
 
@@ -434,7 +434,7 @@ static struct blob* empty_blob(struct blob_list* blist)
     return b;
 }
 
-int segment_image(void* user_struct)
+int extract_image(void* user_struct)
 {
     int i, x1, x2;
     struct stream_state stream;

@@ -1,4 +1,4 @@
-# quick_segment - count blobs really fast
+# quickblob - count blobs really fast
 
 #CFLAGS := -O2 -std=c99 -Wall -pedantic -Wextra -Werror ${CFLAGS}
 CFLAGS := -O2 -std=c99 -Wall -pedantic -Wextra ${CFLAGS}
@@ -6,20 +6,20 @@ LDLIBS  = -lIL
 
 VERSION=$(shell date +%Y%m%d)
 
-all: quick_segment csv-segment
+all: quickblob csv-blobs
 
-quick_segment: quick_segment.o
-	strip -d -X quick_segment.o
-	ar rvs quick_segment.a quick_segment.o
+quickblob: quickblob.o
+	strip -d -X quickblob.o
+	ar rvs quickblob.a quickblob.o
 
-csv-segment:
-	${CC} -o $@ ${LDLIBS} csv-segment.c quick_segment.a
+csv-blobs:
+	${CC} -o $@ ${LDLIBS} csv-blobs.c quickblob.a
 
-strip: csv-segment
-	strip --strip-all csv-segment
+strip: csv-blobs
+	strip --strip-all csv-blobs
 
 clean:
-	rm -f *.o *.so *.a *.so.* csv-segment
+	rm -f *.o *.so *.a *.so.* csv-blobs
 
 .PHONY: all clean strip
 
