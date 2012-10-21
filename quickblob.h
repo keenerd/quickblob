@@ -19,9 +19,10 @@ ABOUT
 /* some structures you'll be working with */
 
 struct blob
-// you'll probably only need size, center_x and center_y
+// you'll probably only need size, color, center_x and center_y
 {
     int size;
+    int color;
     // track current line segment
     int x1;
     int x2;

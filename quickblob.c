@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "quickblob.h"
+//#include "debugstuff.c"
 
 // licensed LGPL
 
@@ -20,6 +21,14 @@ ARCHITECTURE
 TODO
     report all pixels (store old segments, dynamic malloc more)
         use for stats such as blob eccentricity
+    per-blob merging
+        saves half the memory on binary images
+        dead end
+        four color image needs all that memory and more
+        might be worth making a binary only mode (1/4 ram)
+    multilevel grayscale input
+    timing w/o image loading
+    concentric grayscale identification
     make into a dynamic library
     -fvisibility=internal
     #define SYMEXPORT __attribute__((visibility("default")))
@@ -40,6 +49,7 @@ struct blob_list
 static void blank(struct blob* b)
 {
     b->size = 0;
+    b->color = -1;
     b->x1 = -1;
     b->x2 = -1;
     b->y = -1;
@@ -51,73 +61,6 @@ static void blank(struct blob* b)
     b->center_y = 0.0;
 }
 
-/*
-// big mess of stuff for debugging
-void show(struct blob* b)
-{
-    printf("%i:%i (%i) %.2f, %.2f %X\n", b->x1, b->x2, b->size, b->center_x, b->center_y, b);
-}
-
-void show_sib(struct blob* b)
-{
-    if (b == NULL)
-        {printf("NULL\n"); return;}
-    printf("%X %i:%i @%i (%i) %X %X\n", b, b->x1, b->x2, b->y, b->size, b->sib_p, b->sib_n);
-}
-
-void show_link(struct blob* b)
-{
-    if (b == NULL)
-        {printf("NULL\n"); return;}
-    printf("%X (%X %X) (%X %X)\n", b, b->prev, b->next, b->sib_p, b->sib_n);
-}
-
-void show_status(struct blob* bl_start, struct stream_state* stream)
-{
-    struct blob* b;
-    int i=0, j=0;
-    printf("stream %i %i %i\n", stream->x, stream->y, stream->wrap);
-    
-    b = bl_start;
-    while (b)
-    {
-	if (b->size == 0)
-            {i++;}
-        else
-            {j++;}
-	b = b->next;
-    }
-    printf("blobs %i %i %i\n", i, j, i+j);
-}
-
-void show_blobs(struct blob* bl_start)
-{
-    struct blob* b;
-    b = bl_start;
-    while (b)
-    {
-        if (b->x1 != -1 && b->size != 0)
-            {show_sib(b);}
-        b = b->next;
-    }
-    
-}
-
-void show_dead_sibs(struct blob* bl_start)
-{
-    struct blob* b;
-    b = bl_start;
-    while (b)
-    {
-        if ((b->sib_p != NULL && b->sib_p->size == 0) ||
-            (b->sib_n != NULL && b->sib_n->size == 0))
-            {printf("DEAD %X\n", b);}
-        b = b->next;
-    }
-    
-}
-*/
-
 static int init_pixel_stream(void* user_struct, struct stream_state* stream)
 {
     memset(stream, 0, sizeof(struct stream_state));
@@ -126,8 +69,8 @@ static int init_pixel_stream(void* user_struct, struct stream_state* stream)
     stream->row = NULL;
     // row is a bunch of 1x8 bit grayscale samples
     stream->row = (unsigned char*) malloc(stream->w * sizeof(unsigned char));
-    stream->x = -1;
-    stream->y = -1;
+    stream->x = 0;
+    stream->y = -1;  // todo, make x and y init the same
     stream->wrap = 0;
     return 0;
 }
@@ -160,21 +103,6 @@ static int init_blobs(struct blob_list* blist)
     }
     head[len-1].prev = &head[len-2];
     return 0;
-}
-
-static struct blob* blob_empty(struct blob* blist)
-// return second empty blob
-// (first would cause HEAD to change, am lazy)
-{
-    struct blob* b;
-    b = blist->next;
-    while (b->next != NULL)
-    {
-        if (b->size == -1)
-	    {return b;}
-        b = b->next;
-    }
-    return NULL;
 }
 
 static void blob_unlink(struct blob* b2)
@@ -239,7 +167,7 @@ static int next_row(void* user_struct, struct stream_state* stream)
     if (stream->y >= stream->h)
         {return 1;}
     stream->wrap = 0;
-    stream->x = -1;
+    stream->x = 0;
     stream->y++;
     return next_row_hook(user_struct, stream);
 }
@@ -256,22 +184,24 @@ static int next_pixel(struct stream_state* stream)
     return stream->row[stream->x] < 128;
 }
 
-static int scan_for(struct stream_state* stream, int pixel)
-// pixel = FOREGROUND/BACKGROUND
-// if found returns x coord, else -1 for end-of-row
+static int scan_segment(struct stream_state* stream, struct blob* b)
+// sets color/x1/x2 fields, returns 1 on error
 // must call next_row() to continue scanning
 {
-    int p;
     if (stream->wrap)
-        {return -1;}
-    do
+        {return 1;}
+    b->x1 = stream->x;
+    b->color = stream->row[stream->x] < 128;  // todo, multilevel
+    for (;;)  // awkward, but the two exit points are too similar
     {
-        p = next_pixel(stream);
-        if (p == pixel)
-            {return stream->x;}
+        if (stream->x >= stream->w)
+            {stream->wrap = 1; break;}
+        if (b->color != (stream->row[stream->x] < 128))  // todo, multilevel
+            {break;}
+        stream->x++;
     }
-    while (!stream->wrap);
-    return -1;
+    b->x2 = stream->x - 1;
+    return 0;
 }
 
 static void blob_update(struct blob* b, int x1, int x2, int y)
@@ -436,7 +366,7 @@ static struct blob* empty_blob(struct blob_list* blist)
 
 int extract_image(void* user_struct)
 {
-    int i, x1, x2;
+    int i;
     struct stream_state stream;
     struct blob_list blist;
     struct blob* blob_now = NULL;
@@ -454,22 +384,18 @@ int extract_image(void* user_struct)
         while (!stream.wrap)
         {
             blob_now = empty_blob(&blist);
-            // find blob start
-            x1 = scan_for(&stream, FOREGROUND);
-            if (x1 == -1)
+            if (scan_segment(&stream, blob_now))
                 {blob_reap(&blist, blob_now); continue;}
-            // find blob stop
-            x2 = scan_for(&stream, BACKGROUND) - 1;
-            if (x2 == -2)
-               {x2 = stream.w - 1;}
-            blob_update(blob_now, x1, x2, stream.y);
+            if (blob_now->color == 0)  // todo, multilevel
+                {blob_reap(&blist, blob_now); continue;}
+            blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
             // find & link siblings
             b = blist.head->next;
 	    if (blist.data != NULL)
                 {b = blist.data;}
             while (b)
             {
-                i = blob_overlap(b, x1, x2);
+                i = blob_overlap(b, blob_now->x1, blob_now->x2);
                 if (i == -1)
                     {break;} 
                 if (i == 1)
