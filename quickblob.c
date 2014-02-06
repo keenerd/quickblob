@@ -26,7 +26,6 @@ TODO
         dead end
         four color image needs all that memory and more
         might be worth making a binary only mode (1/4 ram)
-    multilevel grayscale input
     timing w/o image loading
     concentric grayscale identification
     make into a dynamic library
@@ -35,9 +34,6 @@ TODO
     nest public struct inside private struct
 */
 
-
-#define FOREGROUND 1
-#define BACKGROUND 0
 
 struct blob_list
 {
@@ -191,12 +187,12 @@ static int scan_segment(struct stream_state* stream, struct blob* b)
     if (stream->wrap)
         {return 1;}
     b->x1 = stream->x;
-    b->color = stream->row[stream->x] < 128;  // todo, multilevel
+    b->color = stream->row[stream->x];
     for (;;)  // awkward, but the two exit points are too similar
     {
         if (stream->x >= stream->w)
             {stream->wrap = 1; break;}
-        if (b->color != (stream->row[stream->x] < 128))  // todo, multilevel
+        if (b->color != (stream->row[stream->x]))
             {break;}
         stream->x++;
     }
@@ -375,7 +371,7 @@ int extract_image(void* user_struct)
         {printf("malloc error!\n"); return 1;}
     if (stream.row == NULL)
         {printf("malloc error!\n"); return 1;}
-    blist.length = stream.w + 3;
+    blist.length = stream.w * 2 + 3;
     if (init_blobs(&blist))
         {printf("malloc error!\n"); return 1;}
 
@@ -385,8 +381,6 @@ int extract_image(void* user_struct)
         {
             blob_now = empty_blob(&blist);
             if (scan_segment(&stream, blob_now))
-                {blob_reap(&blist, blob_now); continue;}
-            if (blob_now->color == 0)  // todo, multilevel
                 {blob_reap(&blist, blob_now); continue;}
             blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
             // find & link siblings
@@ -398,7 +392,7 @@ int extract_image(void* user_struct)
                 i = blob_overlap(b, blob_now->x1, blob_now->x2);
                 if (i == -1)
                     {break;} 
-                if (i == 1)
+                if (i == 1 && b->color == blob_now->color)
                     {sib_link(b, blob_now);}
                 b = b->next;
             }

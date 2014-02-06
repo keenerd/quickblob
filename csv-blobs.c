@@ -26,17 +26,14 @@ TODO
 struct misc
 {
     char* filename;
-    int   invert;
+    int   threshold;
 };
 
 void log_blob_hook(void* user_struct, struct blob* b)
 // center_x, center_y and size are the cumulative stats for a blob
 {
     struct misc* options = user_struct;
-    if (options->invert)
-        {printf("%.2f,%.2f,%i,white\n", b->center_x, b->center_y, b->size);}
-    else
-        {printf("%.2f,%.2f,%i,black\n", b->center_x, b->center_y, b->size);}
+    printf("%.2f,%.2f,%i,%i\n", b->center_x, b->center_y, b->size, b->color);
 }
 
 int init_pixel_stream_hook(void* user_struct, struct stream_state* stream)
@@ -58,6 +55,7 @@ int init_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 
     stream->w = ilGetInteger(IL_IMAGE_WIDTH);
     stream->h = ilGetInteger(IL_IMAGE_HEIGHT);
+    printf("%i,%i,%i,%i\n", stream->w, stream->h, stream->w * stream->h, -1);
     return 0;
 }
 
@@ -70,10 +68,10 @@ int next_row_hook(void* user_struct, struct stream_state* stream)
     ilCopyPixels(0, stream->y, 0,
                  stream->w, 1, 1,
                  IL_LUMINANCE, IL_UNSIGNED_BYTE, (ILubyte*)stream->row);
-    if (!options->invert)
+    if (options->threshold < 0)
         {return 0;}
     for (x=0; x < stream->w; x++)
-        {stream->row[x] = 255 - stream->row[x];}
+        {stream->row[x] = (stream->row[x] >= options->threshold) * 255;}
     return 0;
 }
 
@@ -88,14 +86,16 @@ int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 void use(void)
 {
     printf("csv-blobs --  Find and count unconnected blobs in an image\n\n");
-    printf("Use: csv-blobs [white|black] image.file\n");
-    printf("    white|black - optional arg to double speed\n\n");
-    printf("x_center, y_center, pixel_size, color printed to stdout\n\n");
+    printf("Use: csv-blobs [threshold] image.file\n");
+    printf("    threshold - optional arg for 2-level processing\n\n");
+    printf("x_center, y_center, pixel_size, color printed to stdout\n");
+    printf("    color -1 is used for image size metadata\n\n");
 }
 
 int main(int argc, char *argv[])
 {
     struct misc user_struct;
+    user_struct.threshold = -1;
 
     if (argc != 2 && argc != 3)
         {use(); return 1;}
@@ -109,16 +109,9 @@ int main(int argc, char *argv[])
 
     printf("X,Y,size,color\n");
 
-    if (argc != 3 || strcmp(argv[1], "black") == 0)
-    {
-        user_struct.invert = 0;
-        extract_image((void*)&user_struct);
-    }
+    if (argc == 3)
+        {user_struct.threshold = atoi(argv[1]);}
 
-    if (argc != 3 || strcmp(argv[1], "white") == 0)
-    {
-        user_struct.invert = 1;
-        extract_image((void*)&user_struct);
-    }
+    extract_image((void*)&user_struct);
 }
 

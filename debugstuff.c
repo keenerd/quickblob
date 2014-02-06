@@ -49,7 +49,6 @@ void show_blobs(struct blob* bl_start)
             {show_sib(b);}
         b = b->next;
     }
-    
 }
 
 void show_dead_sibs(struct blob* bl_start)
@@ -63,5 +62,4 @@ void show_dead_sibs(struct blob* bl_start)
             {printf("DEAD %X\n", b);}
         b = b->next;
     }
-    
 }
