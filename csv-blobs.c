@@ -27,13 +27,17 @@ struct misc
 {
     char* filename;
     int   threshold;
+    int   show_bb;
 };
 
 void log_blob_hook(void* user_struct, struct blob* b)
 // center_x, center_y and size are the cumulative stats for a blob
 {
     struct misc* options = user_struct;
-    printf("%.2f,%.2f,%i,%i\n", b->center_x, b->center_y, b->size, b->color);
+    printf("%.2f,%.2f,%i,%i", b->center_x, b->center_y, b->size, b->color);
+    if (options->show_bb)
+        {printf(",%i,%i,%i,%i", b->bb_x1, b->bb_y1, b->bb_x2, b->bb_y2);}
+    printf("\n");
 }
 
 int init_pixel_stream_hook(void* user_struct, struct stream_state* stream)
@@ -86,31 +90,41 @@ int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 void use(void)
 {
     printf("csv-blobs --  Find and count unconnected blobs in an image\n\n");
-    printf("Use: csv-blobs [threshold] image.file\n");
+    printf("Use: csv-blobs [-t threshold] [--bbox] image.file\n");
     printf("    threshold - optional arg for 2-level processing\n\n");
-    printf("x_center, y_center, pixel_size, color printed to stdout\n");
+    printf("x_center, y_center, pixel_size, color, printed to stdout\n");
+    printf("    --bbox adds bounding box information\n");
     printf("    color -1 is used for image size metadata\n\n");
 }
 
 int main(int argc, char *argv[])
 {
+    int i;
     struct misc user_struct;
     user_struct.threshold = -1;
 
-    if (argc != 2 && argc != 3)
+    if (argc <= 1 || argc >= 6)
         {use(); return 1;}
 
-    if (strcmp(argv[1], "-h") == 0)
-        {use(); return 0;}
-    if (strcmp(argv[1], "--help") == 0)
-        {use(); return 0;}
+    /* todo, real arg parsing */
+    for (i=0; i<argc; i++)
+    {
+        if (strcmp(argv[i], "-h") == 0)
+            {use(); return 0;}
+        if (strcmp(argv[i], "--help") == 0)
+            {use(); return 0;}
+        if (strcmp(argv[i], "--bbox") == 0)
+            {user_struct.show_bb = 1;}
+        if (strcmp(argv[i], "-t") == 0)
+            {user_struct.threshold = atoi(argv[i+1]);}
+    }
 
     user_struct.filename = argv[argc-1];
 
-    printf("X,Y,size,color\n");
-
-    if (argc == 3)
-        {user_struct.threshold = atoi(argv[1]);}
+    printf("X,Y,size,color");
+    if (user_struct.show_bb)
+        {printf(",bb_x1,bb_y1,bb_x2,bb_y2");}
+    printf("\n");
 
     extract_image((void*)&user_struct);
 }

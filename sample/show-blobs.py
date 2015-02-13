@@ -9,7 +9,7 @@ def bb(x, y, r):
     return x-r, y-r, x+r, y+r
 
 if len(sys.argv) != 4:
-    print("csv-blobs 128 lorem.png > data.csv")
+    print("csv-blobs -t 128 --bbox lorem.png > data.csv")
     print("show-blobs.py data.csv lorem.png blobs.png")
     sys.exit(2)
 
@@ -23,7 +23,11 @@ draw = ImageDraw.Draw(img)
 height = img.size[1]
 
 for line in open(data):
-    x,y,a,c = line.strip().split(',')
+    line = line.strip().split(',')
+    x,y,a,c = line[:4]
+    bbox = None
+    if len(line) == 8:
+        bbox = line[4:]
 
     """
     if c == 'white':
@@ -46,6 +50,11 @@ for line in open(data):
 
     y = height - y - 1
     r = int(sqrt(a/pi) + 1.5)
+    if bbox:
+        bbox = [int(b) for b in bbox]
+        bbox[1] = height - bbox[1] - 1
+        bbox[3] = height - bbox[3] - 1
+        draw.rectangle(bbox, outline=gray, fill=None)
     draw.ellipse(bb(ceil(x),  ceil(y),  r), outline=gray, fill=None)
     draw.ellipse(bb(ceil(x),  floor(y), r), outline=gray, fill=None)
     draw.ellipse(bb(floor(x), ceil(y),  r), outline=gray, fill=None)

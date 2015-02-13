@@ -55,6 +55,7 @@ static void blank(struct blob* b)
     b->sib_n = NULL;
     b->center_x = 0.0;
     b->center_y = 0.0;
+    b->bb_x1 = b->bb_y1 = b->bb_x2 = b->bb_y2 = -1;
 }
 
 static int init_pixel_stream(void* user_struct, struct stream_state* stream)
@@ -200,6 +201,23 @@ static int scan_segment(struct stream_state* stream, struct blob* b)
     return 0;
 }
 
+static void bbox_update(struct blob* b, int x1, int x2, int y1, int y2)
+{
+    if (b->bb_x1 < 0)
+        {b->bb_x1 = x1;}
+    if (x1 < b->bb_x1)
+        {b->bb_x1 = x1;}
+    if (x2 > b->bb_x2)
+        {b->bb_x2 = x2;}
+
+    if (b->bb_y1 < 0)
+        {b->bb_y1 = y1;}
+    if (y1 < b->bb_y1)
+        {b->bb_y1 = y1;}
+    if (y2 > b->bb_y2)
+        {b->bb_y2 = y2;}
+}
+
 static void blob_update(struct blob* b, int x1, int x2, int y)
 {
     int s2;
@@ -210,6 +228,7 @@ static void blob_update(struct blob* b, int x1, int x2, int y)
     b->center_x = ((b->center_x * b->size) + (x1+x2)*s2/2)/(b->size + s2);
     b->center_y = ((b->center_y * b->size) + (y * s2))/(b->size + s2);
     b->size += s2;
+    bbox_update(b, x1, x2, y, y);
 }
 
 static void sib_link(struct blob* b1, struct blob* b2)
@@ -255,6 +274,7 @@ static void blob_merge(struct blob* b1, struct blob* b2)
     b1->center_x = ((b1->center_x * b1->size) + (b2->center_x * b2->size)) / (b1->size + b2->size);
     b1->center_y = ((b1->center_y * b1->size) + (b2->center_y * b2->size)) / (b1->size + b2->size);
     b1->size += b2->size;
+    bbox_update(b1, b2->bb_x1, b2->bb_x2, b2->bb_y1, b2->bb_y2);
 }
 
 static int range_overlap(int a1, int a2, int b1, int b2)

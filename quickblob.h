@@ -36,6 +36,8 @@ struct blob
     // incremental average
     double center_x;
     double center_y;
+    // bounding box
+    int bb_x1, bb_y1, bb_x2, bb_y2;
     // single linked list for tracking all old pixels
     // struct blob* old;
 };
