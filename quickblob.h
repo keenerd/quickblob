@@ -74,6 +74,10 @@ int next_row_hook(void* user_struct, struct stream_state* stream);
 // load the (grayscale) row at stream->y into the (8 bit) stream->row array
 // return status (0 for success)
 
+int next_frame_hook(void* user_struct, struct stream_state* stream);
+// basically a no-op in the library, but useful for applications
+// return status (0 for success, otherwise breaks the video loop)
+
 /* callable functions */
 
 int extract_image(void* user_struct);

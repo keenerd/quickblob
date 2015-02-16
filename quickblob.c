@@ -28,6 +28,7 @@ TODO
         might be worth making a binary only mode (1/4 ram)
     timing w/o image loading
     concentric grayscale identification
+    remove wrap flag
     make into a dynamic library
     -fvisibility=internal
     #define SYMEXPORT __attribute__((visibility("default")))
@@ -80,15 +81,20 @@ static int close_pixel_stream(void* user_struct, struct stream_state* stream)
     return 0;
 }
 
+static int malloc_blobs(struct blob_list* blist)
+{
+    blist->head = (struct blob*) malloc(blist->length * sizeof(struct blob));
+    if (blist->head == NULL)
+        {return 1;}
+    return 0;
+}
+
 static int init_blobs(struct blob_list* blist)
 {
     int i, len;
     struct blob* head;
     len = blist->length;
-    blist->head = (struct blob*) malloc(len * sizeof(struct blob));
     blist->data = NULL;
-    if (blist->head == NULL)
-        {return 1;}
     head = blist->head;
     for (i=0; i < len; i++)
         {blank(&(head[i]));}
@@ -169,16 +175,12 @@ static int next_row(void* user_struct, struct stream_state* stream)
     return next_row_hook(user_struct, stream);
 }
 
-static int next_pixel(struct stream_state* stream)
-// 1 for foreground, 0 for background, -1 for error
+static int next_frame(void* user_struct, struct stream_state* stream)
 {
-    if (stream->x >= (stream->w - 1))
-    {
-        stream->wrap = 1;
-        return -1;
-    }
-    stream->x++;
-    return stream->row[stream->x] < 128;
+    stream->wrap = 0;
+    stream->x = 0;
+    stream->y = -1;
+    return next_frame_hook(user_struct, stream);
 }
 
 static int scan_segment(struct stream_state* stream, struct blob* b)
@@ -387,54 +389,58 @@ int extract_image(void* user_struct)
     struct blob_list blist;
     struct blob* blob_now = NULL;
     struct blob* b = NULL;
+
     if (init_pixel_stream(user_struct, &stream))
-        {printf("malloc error!\n"); return 1;}
+        {printf("init malloc error!\n"); return 1;}
     if (stream.row == NULL)
-        {printf("malloc error!\n"); return 1;}
+        {printf("row malloc error!\n"); return 1;}
     blist.length = stream.w * 2 + 3;
-    if (init_blobs(&blist))
-        {printf("malloc error!\n"); return 1;}
+    if (malloc_blobs(&blist))
+        {printf("blob malloc error!\n"); return 1;}
 
-    while (!next_row(user_struct, &stream))
+    while (!next_frame(user_struct, &stream))
     {
-        while (!stream.wrap)
+        init_blobs(&blist);
+        while (!next_row(user_struct, &stream))
         {
-            blob_now = empty_blob(&blist);
-            if (scan_segment(&stream, blob_now))
-                {blob_reap(&blist, blob_now); continue;}
-            blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
-            // find & link siblings
-            b = blist.head->next;
-	    if (blist.data != NULL)
-                {b = blist.data;}
-            while (b)
+            while (!stream.wrap)
             {
-                i = blob_overlap(b, blob_now->x1, blob_now->x2);
-                if (i == -1)
-                    {break;} 
-                if (i == 1 && b->color == blob_now->color)
-                    {sib_link(b, blob_now);}
-                b = b->next;
+                blob_now = empty_blob(&blist);
+                if (scan_segment(&stream, blob_now))
+                    {blob_reap(&blist, blob_now); continue;}
+                blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
+                // find & link siblings
+                b = blist.head->next;
+                if (blist.data != NULL)
+                    {b = blist.data;}
+                while (b)
+                {
+                    i = blob_overlap(b, blob_now->x1, blob_now->x2);
+                    if (i == -1 && b->color == blob_now->color)
+                        {break;}
+                    if (i == 1)
+                        {sib_link(b, blob_now);}
+                    b = b->next;
+                }
+                // insert
+                if (blist.data != NULL)
+                    {blob_insert(blist.data->prev, blob_now);}
+                else
+                {
+                    blob_insert(blist.head->next, blob_now);
+                    blist.data = blob_now;
+                }
+                while (blist.data->prev->x1 != -1)
+                    {blist.data = blist.data->prev;}
             }
-            // insert
-            if (blist.data != NULL)
-                {blob_insert(blist.data->prev, blob_now);}
-            else
-            {
-                blob_insert(blist.head->next, blob_now);
-                blist.data = blob_now;
-            }
-            while (blist.data->prev->x1 != -1)
-                {blist.data = blist.data->prev;}
+            flush_old_blobs(user_struct, &blist, stream.y);
+            //show_status(blist.head, &stream);
+            //show_dead_sibs(blist.head);
+            //show_blobs(blist.head);
+            //printf("----------\n");
         }
-        flush_old_blobs(user_struct, &blist, stream.y);
-        //show_status(blist.head, &stream);
-        //show_dead_sibs(blist.head);
-        //show_blobs(blist.head);
-        //printf("----------\n");
+        flush_old_blobs(user_struct, &blist, stream.h - 1);
     }
-
-    flush_old_blobs(user_struct, &blist, stream.h - 1);
 
     close_pixel_stream(user_struct, &stream);
     return 0; 

@@ -28,6 +28,7 @@ struct misc
     char* filename;
     int   threshold;
     int   show_bb;
+    int   frame;
 };
 
 void log_blob_hook(void* user_struct, struct blob* b)
@@ -79,6 +80,14 @@ int next_row_hook(void* user_struct, struct stream_state* stream)
     return 0;
 }
 
+int next_frame_hook(void* user_struct, struct stream_state* stream)
+// single-image application, so this is a no-op
+{
+    struct misc* options = user_struct;
+    options->frame++;
+    return options->frame;
+}
+
 int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 // free anything malloc'd during the init
 {
@@ -102,6 +111,7 @@ int main(int argc, char *argv[])
     int i;
     struct misc user_struct;
     user_struct.threshold = -1;
+    user_struct.frame = -1;
 
     if (argc <= 1 || argc >= 6)
         {use(); return 1;}
