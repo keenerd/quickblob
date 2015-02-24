@@ -12,8 +12,7 @@ ARCHITECTURE
     image is streamed row by row
     blobs are tracked as line segments on a row
     segments are stored in an ordered quad-linked list
-        unused segments are stored at the list head
-        mid-list pointer tracks the data's head
+    unused segments are linked to a stack
     3rd & 4th links are for dealing with V shaped blobs
         these occupy multiple segments, but were previously connected
         sub-lists of sibling blobs
@@ -26,21 +25,22 @@ TODO
         dead end
         four color image needs all that memory and more
         might be worth making a binary only mode (1/4 ram)
-    timing w/o image loading
     concentric grayscale identification
     remove wrap flag
     make into a dynamic library
     -fvisibility=internal
     #define SYMEXPORT __attribute__((visibility("default")))
     nest public struct inside private struct
+    switch from pointers to indexes
 */
 
 
 struct blob_list
 {
     struct blob* head;
-    struct blob* data;
     int length;
+    struct blob** empties;  // stack
+    int empty_i;
 };
 
 static void blank(struct blob* b)
@@ -86,6 +86,9 @@ static int malloc_blobs(struct blob_list* blist)
     blist->head = (struct blob*) malloc(blist->length * sizeof(struct blob));
     if (blist->head == NULL)
         {return 1;}
+    blist->empties = (struct blob**) malloc(blist->length * sizeof(struct blob*));
+    if (blist->empties == NULL)
+        {return 1;}
     return 0;
 }
 
@@ -94,23 +97,24 @@ static int init_blobs(struct blob_list* blist)
     int i, len;
     struct blob* head;
     len = blist->length;
-    blist->data = NULL;
+    blist->empty_i = 0;
     head = blist->head;
     for (i=0; i < len; i++)
         {blank(&(head[i]));}
     head[0].next = &head[1];
-    for (i=1; i < len-1; i++)
+    head[1].prev = &head[0];
+    for (i=1; i < len; i++)
     {
-        head[i].prev = &head[i-1];
-        head[i].next = &head[i+1];
+        blist->empties[blist->empty_i] = &(head[i]);
+        blist->empty_i++;
     }
-    head[len-1].prev = &head[len-2];
     return 0;
 }
 
 static void blob_unlink(struct blob* b2)
 // remove from linked list
 // (don't use on first, am lazy)
+// would be smarter to do the empty push here
 {
     struct blob* b1 = NULL;
     struct blob* b3 = NULL;
@@ -160,7 +164,7 @@ static void blob_insert(struct blob* bl_start, struct blob* b2)
     }
     // append to end
     if (b1->x1 > b2->x1)
-        {return;}  // TODO: should raise an error
+        {printf("insert error\n"); return;}  // TODO: should raise an error
     b1->next = b2;
     b2->prev = b1;
 }
@@ -313,11 +317,10 @@ static int blob_overlap(struct blob* b, int x1, int x2)
 
 static void blob_reap(struct blob_list* blist, struct blob* b)
 {
-    if (b == blist->data)
-        {blist->data = blist->data->next;}
     blob_unlink(b);
     blank(b);
-    blob_insert(blist->head->next, b);
+    blist->empties[blist->empty_i] = b;
+    blist->empty_i++;
 }
 
 static void sib_cleanup(struct blob_list* blist, struct blob* b)
@@ -375,10 +378,9 @@ static void flush_old_blobs(void* user_struct, struct blob_list* blist, int y)
 static struct blob* empty_blob(struct blob_list* blist)
 {
     struct blob* b;
-    // never touch head, always take second
-    b = blist->head->next;
-    blob_unlink(b);
-    blank(b);
+    blist->empty_i--;
+    b = blist->empties[blist->empty_i];
+    blist->empties[blist->empty_i] = NULL;
     return b;
 }
 
@@ -411,27 +413,19 @@ int extract_image(void* user_struct)
                 blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
                 // find & link siblings
                 b = blist.head->next;
-                if (blist.data != NULL)
-                    {b = blist.data;}
                 while (b)
                 {
+                    if (b->color != blob_now->color)
+                        {b = b->next; continue;}
                     i = blob_overlap(b, blob_now->x1, blob_now->x2);
-                    if (i == -1 && b->color == blob_now->color)
+                    if (i == -1)
                         {break;}
                     if (i == 1)
                         {sib_link(b, blob_now);}
                     b = b->next;
                 }
                 // insert
-                if (blist.data != NULL)
-                    {blob_insert(blist.data->prev, blob_now);}
-                else
-                {
-                    blob_insert(blist.head->next, blob_now);
-                    blist.data = blob_now;
-                }
-                while (blist.data->prev->x1 != -1)
-                    {blist.data = blist.data->prev;}
+                blob_insert(blist.head->next, blob_now);
             }
             flush_old_blobs(user_struct, &blist, stream.y);
             //show_status(blist.head, &stream);
