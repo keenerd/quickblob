@@ -30,8 +30,9 @@ TODO
     make into a dynamic library
     -fvisibility=internal
     #define SYMEXPORT __attribute__((visibility("default")))
-    nest public struct inside private struct
+    split blob, nest public struct inside private struct
     switch from pointers to indexes
+        not worth it, saves ram but at best 6% faster
 */
 
 
@@ -347,6 +348,26 @@ static void sib_cleanup(struct blob_list* blist, struct blob* b)
         {blob_merge(s3, b); blob_reap(blist, b); return;}
 }
 
+static void sib_find(struct blob* blob_start, struct blob* blob_now)
+{
+    struct blob* b = NULL;
+    int i;
+    b = blob_start;
+    while (b)
+    {
+        if (b->color != blob_now->color)
+            {b = b->next; continue;}
+        if (b->y == blob_now->y)
+            {b = b->next; continue;}
+        i = blob_overlap(b, blob_now->x1, blob_now->x2);
+        if (i == -1)
+            {break;}
+        if (i == 1)
+            {sib_link(b, blob_now);}
+        b = b->next;
+    }
+}
+
 static void flush_old_blobs(void* user_struct, struct blob_list* blist, int y)
 // merges (or prints) and reaps, y is current row
 {
@@ -386,11 +407,10 @@ static struct blob* empty_blob(struct blob_list* blist)
 
 int extract_image(void* user_struct)
 {
-    int i;
     struct stream_state stream;
     struct blob_list blist;
     struct blob* blob_now = NULL;
-    struct blob* b = NULL;
+    struct blob* blob_prev = NULL;
 
     if (init_pixel_stream(user_struct, &stream))
         {printf("init malloc error!\n"); return 1;}
@@ -405,6 +425,7 @@ int extract_image(void* user_struct)
         init_blobs(&blist);
         while (!next_row(user_struct, &stream))
         {
+            blob_prev = blist.head->next;
             while (!stream.wrap)
             {
                 blob_now = empty_blob(&blist);
@@ -412,20 +433,10 @@ int extract_image(void* user_struct)
                     {blob_reap(&blist, blob_now); continue;}
                 blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
                 // find & link siblings
-                b = blist.head->next;
-                while (b)
-                {
-                    if (b->color != blob_now->color)
-                        {b = b->next; continue;}
-                    i = blob_overlap(b, blob_now->x1, blob_now->x2);
-                    if (i == -1)
-                        {break;}
-                    if (i == 1)
-                        {sib_link(b, blob_now);}
-                    b = b->next;
-                }
+                sib_find(blist.head->next, blob_now);
                 // insert
-                blob_insert(blist.head->next, blob_now);
+                blob_insert(blob_prev, blob_now);
+                blob_prev = blob_now;
             }
             flush_old_blobs(user_struct, &blist, stream.y);
             //show_status(blist.head, &stream);
