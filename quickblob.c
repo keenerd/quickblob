@@ -20,11 +20,7 @@ ARCHITECTURE
 TODO
     report all pixels (store old segments, dynamic malloc more)
         use for stats such as blob eccentricity
-    per-blob merging
-        saves half the memory on binary images
-        dead end
-        four color image needs all that memory and more
-        might be worth making a binary only mode (1/4 ram)
+    binary foreground only mode (1/4 ram)
     concentric grayscale identification
     remove wrap flag
     make into a dynamic library
@@ -114,8 +110,7 @@ static int init_blobs(struct blob_list* blist)
 
 static void blob_unlink(struct blob* b2)
 // remove from linked list
-// (don't use on first, am lazy)
-// would be smarter to do the empty push here
+// (don't use on head, am lazy)
 {
     struct blob* b1 = NULL;
     struct blob* b3 = NULL;
@@ -368,6 +363,46 @@ static void sib_find(struct blob* blob_start, struct blob* blob_now)
     }
 }
 
+static void flush_incremental(void* user_struct, struct blob_list* blist, struct blob* blob_now)
+// merges/prints/reaps everything before blob_now
+{
+    struct blob* b;
+    struct blob* b2;
+    // pass 1, merge old sibs
+    b = blob_now;
+    while (b->sib_p)
+    {
+        b = b->sib_p;
+        if (b->y != blob_now->y-1)
+            {continue;}
+        if (b->x1 == -1)
+            {break;}
+        if (b->x2 > blob_now->x2)
+            {continue;}
+        // merge b into b2
+        b2 = b->sib_n;
+        blob_merge(b2, b);
+        blob_reap(blist, b);
+        b = b2;
+    }
+    // pass 2, log isolated blobs
+    b = blob_now;
+    while (b->prev)
+    {
+        b = b->prev;
+        if (b->y != blob_now->y-1)
+            {continue;}
+        if (b->x1 == -1)
+            {break;}
+        if (b->sib_n || b->sib_p)
+            {continue;}
+        b2 = b->next;
+        log_blob_hook(user_struct, b);
+        blob_reap(blist, b);
+        b = b2;
+    }
+}
+
 static void flush_old_blobs(void* user_struct, struct blob_list* blist, int y)
 // merges (or prints) and reaps, y is current row
 {
@@ -380,19 +415,17 @@ static void flush_old_blobs(void* user_struct, struct blob_list* blist, int y)
             {b = b->next; continue;}
         if (b->x1 == -1)
             {b = b->next; continue;}
-        if (b->y != y)
-        {
-            // use previous so the scan does not restart every reap
-            b2 = b;
-            if (b->prev != NULL)
-                {b2 = b->prev;}
-            if (b->sib_p == NULL && b->sib_n == NULL)
-                {log_blob_hook(user_struct, b); blob_reap(blist, b);}
-            else
-                {sib_cleanup(blist, b);}
-            b = b2;
-        }
-        b = b->next;
+        if (b->y == y)
+            {b = b->next; continue;}
+        // use previous so the scan does not restart every reap
+        b2 = b;
+        if (b->prev != NULL)
+            {b2 = b->prev;}
+        if (b->sib_p == NULL && b->sib_n == NULL)
+            {log_blob_hook(user_struct, b); blob_reap(blist, b);}
+        else
+            {sib_cleanup(blist, b);}
+        b = b2->next;
     }
 }
 
@@ -416,7 +449,7 @@ int extract_image(void* user_struct)
         {printf("init malloc error!\n"); return 1;}
     if (stream.row == NULL)
         {printf("row malloc error!\n"); return 1;}
-    blist.length = stream.w * 2 + 3;
+    blist.length = stream.w + 5;
     if (malloc_blobs(&blist))
         {printf("blob malloc error!\n"); return 1;}
 
@@ -432,10 +465,10 @@ int extract_image(void* user_struct)
                 if (scan_segment(&stream, blob_now))
                     {blob_reap(&blist, blob_now); continue;}
                 blob_update(blob_now, blob_now->x1, blob_now->x2, stream.y);
-                // find & link siblings
+                // update structure
                 sib_find(blist.head->next, blob_now);
-                // insert
                 blob_insert(blob_prev, blob_now);
+                flush_incremental(user_struct, &blist, blob_now);
                 blob_prev = blob_now;
             }
             flush_old_blobs(user_struct, &blist, stream.y);
