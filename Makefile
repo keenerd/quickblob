@@ -2,7 +2,7 @@
 
 # -ggdb -Werror -std=c99
 CFLAGS := -O2 -std=gnu99 -Wall -pedantic -Wextra ${CFLAGS}
-LDLIBS  = -lIL
+LDLIBS  = -lpng -lz
 
 VERSION=$(shell date +%Y%m%d)
 

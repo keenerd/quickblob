@@ -48,12 +48,9 @@ for line in open(data):
     except ValueError:
         continue
 
-    y = height - y - 1
     r = int(sqrt(a/pi) + 1.5)
     if bbox:
         bbox = [int(b) for b in bbox]
-        bbox[1] = height - bbox[1] - 1
-        bbox[3] = height - bbox[3] - 1
         draw.rectangle(bbox, outline=gray, fill=None)
     draw.ellipse(bb(ceil(x),  ceil(y),  r), outline=gray, fill=None)
     draw.ellipse(bb(ceil(x),  floor(y), r), outline=gray, fill=None)

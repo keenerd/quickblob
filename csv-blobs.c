@@ -4,7 +4,7 @@
 
 #include "quickblob.h"
 
-#include <IL/il.h>
+#include <png.h>
 
 // gcc -O2 -lIL -o csv-blobs csv-blobs.c quickblob.a
 
@@ -12,14 +12,11 @@
 
 /*
 ABOUT
-    example of how to use QuickBlob with DevIL
+    example of how to use QuickBlob with libpng
     you define a few functions for your choice of image library
         take a look at quickblob.h for more details
-    DevIL starts at lower left corner, works up
-        reported Y coords might be backwards from what you expect
 
 TODO
-    find an O(1) [memory] image streaming library for this example
     make quickblob into dynamic library
 */
 
@@ -29,6 +26,9 @@ struct misc
     int   threshold;
     int   show_bb;
     int   frame;
+    FILE* fp;
+    png_structp png_ptr;
+    png_infop info_ptr;
 };
 
 void log_blob_hook(void* user_struct, struct blob* b)
@@ -44,22 +44,61 @@ void log_blob_hook(void* user_struct, struct blob* b)
 int init_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 // get the image ready for streaming
 // set the width and height
+// mostly deals with libpng junk (for comparison, DevIL init was 5 lines)
 {
-    struct misc* options = user_struct;
-    ILboolean status;
+    struct misc* opt = user_struct;
+    unsigned int width, height;
+    int bit_depth, color_type, interlace_type;
+    unsigned char header[8];
 
-    ilInit();
-    ilEnable(IL_ORIGIN_SET);
-    // yeah yeah, check the malloc for a single int
-    stream->handle = (ILuint*) malloc(sizeof(ILuint));
-    ilGenImages(1, (ILuint*)(stream->handle));
+    // check file
+    opt->fp = fopen(opt->filename, "rb");
+    if (!opt->fp)
+        {fprintf(stderr, "could not open file\n"); return 1;}
+    fread(header, 1, 8, opt->fp);
+    if (png_sig_cmp(header, 0, 8))
+        {fprintf(stderr, "file is not a png\n"); return 1;}
 
-    status = ilLoadImage(options->filename);
-    if (status == IL_FALSE)
-        {return 1;}
+    // init
+    opt->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!opt->png_ptr)
+        {fprintf(stderr, "create_read failure\n"); return 1;}
+    opt->info_ptr = png_create_info_struct(opt->png_ptr);
+    if (!opt->info_ptr)
+        {fprintf(stderr, "create_info failure\n"); return 1;}
+    if (setjmp(png_jmpbuf(opt->png_ptr)))
+        {fprintf(stderr, "init_io failure\n"); return 1;}
+    png_init_io(opt->png_ptr, opt->fp);
+    png_set_sig_bytes(opt->png_ptr, 8);
+    png_read_info(opt->png_ptr, opt->info_ptr);
+    png_get_IHDR(opt->png_ptr, opt->info_ptr, &width, &height,
+        &bit_depth, &color_type, &interlace_type, NULL, NULL);
+    if (interlace_type != PNG_INTERLACE_NONE)
+        {fprintf(stderr, "interlaced PNGs not supported\n"); return 1;}
+    stream->w = (int)width;
+    stream->h = (int)height - 1;
 
-    stream->w = ilGetInteger(IL_IMAGE_WIDTH);
-    stream->h = ilGetInteger(IL_IMAGE_HEIGHT);
+    //number_of_passes = png_set_interlace_handling(png_ptr);
+
+    // force to 8 bit grayscale
+    if (bit_depth == 16)
+        {png_set_strip_16(opt->png_ptr);}
+    if (color_type == PNG_COLOR_TYPE_PALETTE)
+        {png_set_palette_to_rgb(opt->png_ptr);}
+    if (color_type == PNG_COLOR_TYPE_GRAY_ALPHA || color_type == PNG_COLOR_TYPE_RGB_ALPHA)
+        {png_set_strip_alpha(opt->png_ptr);}
+    if (color_type != PNG_COLOR_TYPE_GRAY)
+        {png_set_rgb_to_gray(opt->png_ptr, 1, -1.0, -1.0);}
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+        {png_set_expand_gray_1_2_4_to_8(opt->png_ptr);}
+    png_set_crc_action(opt->png_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
+    // only one of these?
+    //png_start_read_image(opt->png_ptr);
+    png_read_update_info(opt->png_ptr, opt->info_ptr);
+
+    if (setjmp(png_jmpbuf(opt->png_ptr)))
+        {fprintf(stderr, "read_image failure\n"); return 1;}
+
     printf("%i,%i,%i,%i\n", stream->w, stream->h, stream->w * stream->h, -1);
     return 0;
 }
@@ -69,10 +108,8 @@ int next_row_hook(void* user_struct, struct stream_state* stream)
 {
     struct misc* options = user_struct;
     int x;
-    // CopyPixels is smart enough to convert rgb -> lum
-    ilCopyPixels(0, stream->y, 0,
-                 stream->w, 1, 1,
-                 IL_LUMINANCE, IL_UNSIGNED_BYTE, (ILubyte*)stream->row);
+    // libpng requires dead reckoning, y is implicit
+    png_read_row(options->png_ptr, stream->row, NULL);
     if (options->threshold < 0)
         {return 0;}
     for (x=0; x < stream->w; x++)
@@ -91,15 +128,17 @@ int next_frame_hook(void* user_struct, struct stream_state* stream)
 int close_pixel_stream_hook(void* user_struct, struct stream_state* stream)
 // free anything malloc'd during the init
 {
-    ilDeleteImages(1, (ILuint*)(stream->handle));
-    free(stream->handle);
+    struct misc* opt = user_struct;
+    //png_read_end(opt->png_ptr, NULL);
+    png_destroy_read_struct(&opt->png_ptr, &opt->info_ptr, (png_infopp)NULL);
+    fclose(opt->fp);
     return 0;
 }
 
 void use(void)
 {
     printf("csv-blobs --  Find and count unconnected blobs in an image\n\n");
-    printf("Use: csv-blobs [-t threshold] [--bbox] image.file\n");
+    printf("Use: csv-blobs [-t threshold] [--bbox] image.png\n");
     printf("    threshold - optional arg for 2-level processing\n\n");
     printf("x_center, y_center, pixel_size, color, printed to stdout\n");
     printf("    --bbox adds bounding box information\n");
@@ -137,5 +176,6 @@ int main(int argc, char *argv[])
     printf("\n");
 
     extract_image((void*)&user_struct);
+    return 0;
 }
 
