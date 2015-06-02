@@ -6,33 +6,34 @@ LDLIBS  = -lpng -lz
 
 VERSION=$(shell date +%Y%m%d)
 
-all: quickblob csv-blobs
+%.a: %.o
+	strip -d -X $<
+	ar rvs $@ $<
 
-quickblob: quickblob.o
-	strip -d -X quickblob.o
-	ar rvs quickblob.a quickblob.o
+all: csv-blobs
 
-csv-blobs: quickblob
-	${CC} -o $@ ${CFLAGS} ${LDLIBS} csv-blobs.c quickblob.a
+csv-blobs: csv-blobs.o quickblob.a
+
+quickblob.a: quickblob.o
+
+blobmark: quickblob.a
 
 strip: csv-blobs
-	strip --strip-all csv-blobs
+	strip --strip-all $^
 
-blobmark: quickblob
-	${CC} -o $@ ${CFLAGS} -lrt blobmark.c quickblob.a
-
-# embarrassingly hacky
-profile:
-	CFLAGS='-pg' $(MAKE) clean all blobmark
-	rm -f gmon.out best_case.txt worst_case.txt
+profile: CFLAGS += -pg
+profile: clean blobmark
+	$(RM) best_case.txt worst_case.txt
 	./blobmark 640 480 0 1 1
 	gprof blobmark gmon.out > worst_case.txt
-	rm -f gmon.out
+	$(RM) gmon.out
 	./blobmark 640 480 3 0 1
 	gprof blobmark gmon.out > best_case.txt
 
+tcc-blobs:
+	tcc -o $@ -lpng quickblob.c csv-blobs.c
+
 clean:
-	rm -f *.o *.so *.a *.so.* csv-blobs blobmark gmon.out
+	$(RM) *.o *.a csv-blobs blobmark tcc-blobs gmon.out
 
-.PHONY: all clean strip
-
+.PHONY: all clean strip profile
