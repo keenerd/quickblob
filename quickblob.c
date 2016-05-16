@@ -70,11 +70,15 @@ static int init_pixel_stream(void* user_struct, struct stream_state* stream)
     return 0;
 }
 
-static int close_pixel_stream(void* user_struct, struct stream_state* stream)
+static int close_pixel_stream(void* user_struct, struct stream_state* stream, struct blob_list* blist)
 {
     close_pixel_stream_hook(user_struct, stream);  // TODO return status
     free(stream->row);
+    free(blist->head);
+    free(blist->empties);
     stream->row = NULL;
+    blist->head = NULL;
+    blist->empties = NULL;
     return 0;
 }
 
@@ -480,7 +484,7 @@ int extract_image(void* user_struct)
         flush_old_blobs(user_struct, &blist, stream.h - 1);
     }
 
-    close_pixel_stream(user_struct, &stream);
+    close_pixel_stream(user_struct, &stream, &blist);
     return 0; 
 }
 
