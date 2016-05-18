@@ -481,6 +481,10 @@ int extract_image(void* user_struct)
     }
 
     close_pixel_stream(user_struct, &stream);
+    free(blist.head);
+    free(blist.empties);
+    blist.head = NULL;
+    blist.empties = NULL;
     return 0; 
 }
 
